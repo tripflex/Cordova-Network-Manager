@@ -501,12 +501,22 @@ public class cordovaNetworkManager extends CordovaPlugin {
         }
 
         String ssid = info.getSSID();
-        if(ssid.isEmpty()) {
+
+        // see https://github.com/hoerresb/WifiWizard/issues/52
+        if(ssid == null || ssid.isEmpty()) {
+            // TODO: Not sure why we're returning BSSID if SSID is not available???
             ssid = info.getBSSID();
         }
-        if(ssid.isEmpty()){
+
+        if(ssid == null || ssid.isEmpty() || ssid == "0x"){
             callbackContext.error("SSID is empty");
             return false;
+        }
+
+        // Returned SSID may be enclosed in double quotation marks
+        // see https://developer.android.com/reference/android/net/wifi/WifiInfo.html#getSSID()
+        if(ssid.startsWith("\"") && ssid.endsWith("\"")){
+            ssid = ssid.substring(1, ssid.length()-1);
         }
 
         callbackContext.success(ssid);
