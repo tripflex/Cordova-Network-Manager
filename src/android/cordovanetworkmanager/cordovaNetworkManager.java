@@ -505,55 +505,28 @@ public class cordovaNetworkManager extends CordovaPlugin {
      *    @return    true if SSID found, false if not.
     */
     private boolean getConnectedSSID(CallbackContext callbackContext){
-        if(!wifiManager.isWifiEnabled()){
-            callbackContext.error("Wifi is disabled");
-            return false;
-        }
-
-        WifiInfo info = wifiManager.getConnectionInfo();
-
-        if(info == null){
-            callbackContext.error("Unable to read wifi info");
-            return false;
-        }
-
-        // Only return SSID when actually connected to a network
-        SupplicantState state = info.getSupplicantState();
-        if(!state.equals(SupplicantState.COMPLETED)) {
-            callbackContext.error("Connection not in COMPLETED state");
-            return false;
-        }
-
-        String ssid = info.getSSID();
-
-        // see https://github.com/hoerresb/WifiWizard/issues/52
-        if(ssid == null || ssid.isEmpty()) {
-            // TODO: Not sure why we're returning BSSID if SSID is not available???
-            ssid = info.getBSSID();
-        }
-
-        if(ssid == null || ssid.isEmpty() || ssid == "0x"){
-            callbackContext.error("SSID is empty");
-            return false;
-        }
-
-        // Returned SSID may be enclosed in double quotation marks
-        // see https://developer.android.com/reference/android/net/wifi/WifiInfo.html#getSSID()
-        if(ssid.startsWith("\"") && ssid.endsWith("\"")){
-            ssid = ssid.substring(1, ssid.length()-1);
-        }
-
-        callbackContext.success(ssid);
-        return true;
+        return  getWifiServiceInfo(callbackContext, false);
     }
 
     /**
      * This method retrieves the BSSID for the currently connected network
      *
      *    @param    callbackContext        A Cordova callback context
-     *    @return    true if BSSID found, false if not.
+     *    @return    true if SSID found, false if not.
     */
     private boolean getConnectedBSSID(CallbackContext callbackContext){
+        return getWifiServiceInfo(callbackContext, true);
+    }
+
+    /**
+     * This method retrieves the WifiInformation for the (SSID or BSSID)
+     * currently connected network.
+     *
+     *    @param    callbackContext        A Cordova callback context
+     *    @param    basicIdentifier        A flag to get BSSID if true or SSID if false.
+     *    @return    true if SSID found, false if not.
+    */
+    private boolean getWifiServiceInfo(CallbackContext callbackContext, boolean basicIdentifier){
         if(!wifiManager.isWifiEnabled()){
             callbackContext.error("Wifi is disabled");
             return false;
@@ -566,14 +539,26 @@ public class cordovaNetworkManager extends CordovaPlugin {
             return false;
         }
 
-        String bssid = info.getBSSID();
-
-        if(bssid.isEmpty()){
-            callbackContext.error("BSSID is empty");
+        // Only return SSID or BSSID when actually connected to a network
+        SupplicantState state = info.getSupplicantState();
+        if(!state.equals(SupplicantState.COMPLETED)) {
+            callbackContext.error("Connection not in COMPLETED state");
             return false;
         }
 
-        callbackContext.success(bssid);
+        String serviceInfo;
+        if(basicIdentifier) {
+            serviceInfo = info.getBSSID();
+        } else {
+            serviceInfo = info.getSSID();
+        }
+
+        if(serviceInfo == null || serviceInfo.isEmpty() || serviceInfo == "0x"){
+            callbackContext.error("Wifi information is empty");
+            return false;
+        }
+
+        callbackContext.success(serviceInfo);
         return true;
     }
 
