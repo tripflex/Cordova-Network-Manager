@@ -2,6 +2,7 @@
     MIT License
 
     Copyright (c) [2017] [Nicholas Clancy]
+    Copyright (c) [2018] [Myles McNamara]
 
     Permission is hereby granted, free of charge, to any person obtaining a copy
     of this software and associated documentation files (the "Software"), to deal
@@ -97,7 +98,7 @@ var cordovaNetworkManager = {
     },
 
     formatWifiString: function (ssid) {
-        if (ssid === undefined || ssid === null) {
+        if (ssid === undefined || ssid === null || ssid === false) {
             ssid = "";
         }
         ssid = ssid.trim();
@@ -160,8 +161,8 @@ var cordovaNetworkManager = {
         cordova.exec(win, fail, "cordovaNetworkManager", "removeNetwork", [cordovaNetworkManager.formatWifiString(SSID)]);
     },
 
-    androidConnectNetwork: function (SSID, currentSSID, win, fail) {
-        cordova.exec(win, fail, "cordovaNetworkManager", "androidConnectNetwork", [cordovaNetworkManager.formatWifiString(SSID), cordovaNetworkManager.formatWifiString(currentSSID)]);
+    androidConnectNetwork: function (SSID, win, fail) {
+        cordova.exec(win, fail, "cordovaNetworkManager", "androidConnectNetwork", [cordovaNetworkManager.formatWifiString(SSID)]);
     },
 
     androidDisconnectNetwork: function (SSID, currentSSID, win, fail) {
@@ -228,6 +229,13 @@ var cordovaNetworkManager = {
             return;
         }
         cordova.exec(win, fail, "cordovaNetworkManager", "setWifiEnabled", [enabled]);
+    },
+    getConnectedNetworkID: function (win, fail) {
+        if (typeof win != "function") {
+            console.log("getConnectedNetworkID first parameter must be a function to handle network ID.");
+            return;
+        }
+        cordova.exec(win, fail, "cordovaNetworkManager", "getConnectedNetworkID", []);
     }
 
 

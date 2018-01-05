@@ -2,6 +2,7 @@
     MIT License
 
     Copyright (c) [2017] [Nicholas Clancy]
+    Copyright (c) [2018] [Myles McNamara]
 
     Permission is hereby granted, free of charge, to any person obtaining a copy
     of this software and associated documentation files (the "Software"), to deal
@@ -26,6 +27,7 @@ package cordovanetworkmanager;
 
 import org.apache.cordova.*;
 import java.util.List;
+import java.lang.InterruptedException;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -55,6 +57,7 @@ public class cordovaNetworkManager extends CordovaPlugin {
     private static final String GET_SCAN_RESULTS = "getScanResults";
     private static final String GET_CONNECTED_SSID = "getConnectedSSID";
     private static final String GET_CONNECTED_BSSID = "getConnectedBSSID";
+    private static final String GET_CONNECTED_NETWORKID = "getConnectedNetworkID";
     private static final String IS_WIFI_ENABLED = "isWifiEnabled";
     private static final String SET_WIFI_ENABLED = "setWifiEnabled";
     private static final String TAG = "cordovaNetworkManager";
@@ -114,6 +117,9 @@ public class cordovaNetworkManager extends CordovaPlugin {
         }
         else if(action.equals(GET_CONNECTED_BSSID)) {
             return this.getConnectedBSSID(callbackContext);
+        }
+        else if(action.equals(GET_CONNECTED_NETWORKID)) {
+            return this.getConnectedNetworkID(callbackContext);
         }
         else {
             callbackContext.error("Incorrect action parameter: " + action);
@@ -269,11 +275,9 @@ public class cordovaNetworkManager extends CordovaPlugin {
             return false;
         }
         String ssidToConnect = "";
-		String currentSSID = "";
 
         try {
             ssidToConnect = data.getString(0);
-			currentSSID = data.getString(1);
         }
         catch (Exception e) {
             callbackContext.error(e.getMessage());
@@ -282,21 +286,61 @@ public class cordovaNetworkManager extends CordovaPlugin {
         }
 
         int networkIdToConnect = ssidToNetworkId(ssidToConnect);
-		int currentNetworkId = ssidToNetworkId(currentSSID);
 
-        if (networkIdToConnect >= 0 && currentNetworkId >= 0) {
+        // Attempt to get currently connected network ID
+        int networkIdToDisable = getConnectedNetId();
+
+        // If not currently connected to a a wifi network, use network id we want to connect to for disable
+        if( networkIdToDisable == -1 ){
+            networkIdToDisable = networkIdToConnect;
+        }
+
+        if (networkIdToConnect >= 0) {
             // We disable the network before connecting, because if this was the last connection before
             // a disconnect(), this will not reconnect.
 
-			wifiManager.disableNetwork(currentNetworkId);
-			wifiManager.enableNetwork(networkIdToConnect, true);
+            Log.d(TAG, "Valid networkIdToConnect: attempting connection");
 
-            SupplicantState supState;
-            WifiInfo wifiInfo = wifiManager.getConnectionInfo();
-            supState = wifiInfo.getSupplicantState();
+            wifiManager.disconnect();
+            wifiManager.disableNetwork(networkIdToDisable);
+            wifiManager.enableNetwork(networkIdToConnect, true);
+            wifiManager.reconnect();
 
-            callbackContext.success(supState.toString());
-            return true;
+
+            final int TIMES_TO_RETRY = 30;
+            for(int i = 0; i < TIMES_TO_RETRY; i++) {
+            
+                WifiInfo info = wifiManager.getConnectionInfo();
+                NetworkInfo.DetailedState connectionState = info.getDetailedStateOf(info.getSupplicantState());
+
+                boolean isConnected =
+                        // need to ensure we're on correct network because sometimes this code is
+                        // reached before the initial network has disconnected
+                        info.getNetworkId() == networkIdToConnect && (
+                                connectionState == NetworkInfo.DetailedState.CONNECTED ||
+                                // Android seems to sometimes get stuck in OBTAINING_IPADDR after it has received one
+                                (connectionState == NetworkInfo.DetailedState.OBTAINING_IPADDR && info.getIpAddress() != 0)
+                        );
+                if (isConnected) {
+                    callbackContext.success("Network " + ssidToConnect + " connected!");
+                    return true;
+                }
+
+                Log.d(TAG, "WifiWizard: Got " + connectionState.name() + " on " + (i + 1) + " out of " + TIMES_TO_RETRY);
+                final int ONE_SECOND = 1000;
+                try {
+                    Thread.sleep(ONE_SECOND);
+                }
+                catch (InterruptedException e) {
+                    Log.e(TAG, e.getMessage());
+                    callbackContext.error("Received InterruptedException while connecting");
+                    return false;
+                }
+            }
+            callbackContext.error("Network " + ssidToConnect + " failed to finish connecting within the timeout");
+            Log.d(TAG, "WifiWizard: Network failed to finish connecting within the timeout");
+            return false;
+
 
         }else{
             callbackContext.error("cordovaNetworkManager: Cannot connect to network");
@@ -496,6 +540,53 @@ public class cordovaNetworkManager extends CordovaPlugin {
             callbackContext.error("Scan failed");
             return false;
         }
+    }
+
+    /**
+     * This method returns the connected WiFi network ID (if connected)
+     *
+     *    @return    -1 if no network connected, or network id if connected
+    */
+    private int getConnectedNetId(){
+        int networkId = -1;
+
+        if(!wifiManager.isWifiEnabled()){
+            Log.d(TAG, "WiFi not enabled");
+            return networkId;
+        }
+
+        WifiInfo info = wifiManager.getConnectionInfo();
+
+        if(info == null){
+            Log.d(TAG, "Unable to read wifi info");
+            return networkId;
+        }
+
+        networkId = info.getNetworkId();
+
+        if( networkId == -1 ){
+            Log.d(TAG, "No currently connected net id found");
+        }
+
+        return networkId;
+    }
+
+    /**
+     * This method returns the connected WiFi network ID (if connected)
+     *
+     *    @param    callbackContext        A Cordova callback context
+     *    @return    -1 if no network connected, or network id if connected
+    */
+    private boolean getConnectedNetworkID(CallbackContext callbackContext){
+        int networkId = getConnectedNetId();
+
+        if( networkId == -1 ){
+            callbackContext.error("Not connected to WiFi or unable to get network ID");
+            return false;
+        }
+
+        callbackContext.success(networkId);
+        return true;
     }
 
     /**
